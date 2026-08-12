@@ -39,10 +39,10 @@ public class MainActivity extends AppCompatActivity {
             mMapView.getController().setZoom(15.0);
             mMapView.getController().setCenter(startPoint);
 
-            // Map Tap & Long Press Events setup (Java compatible syntax)
+            // Corrected OSMDroid MapEventsReceiver interface
             MapEventsReceiver mapEventsReceiver = new MapEventsReceiver() {
                 @Override
-                public boolean singleTapUpHelper(GeoPoint p) {
+                public boolean singleTapConfirmedHelper(GeoPoint p) {
                     return false;
                 }
 
