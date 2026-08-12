@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <org.osmdroid.views.MapView
+        android:id="@+id/mapView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:background="#80FFFFFF">
+
+        <EditText
+            android:id="@+id/etSearch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Search location..."
+            android:textColor="#000"
+            android:textSize="14sp" />
+
+        <Button
+            android:id="@+id/btnLayer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Map: Standard"
+            android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="12dp"
+        android:background="#CCFFFFFF">
+
+        <Button
+            android:id="@+id/btnStartMock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Start Mock"
+            android:layout_marginEnd="4dp"/>
+
+        <Button
+            android:id="@+id/btnStopMock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Stop"
+            android:layout_marginEnd="4dp"/>
+
+        <Button
+            android:id="@+id/btnFav"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Fav+"
+            android:layout_marginEnd="4dp"/>
+
+        <Button
+            android:id="@+id/btnViewFav"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Fav List"/>
+    </LinearLayout>
+
+</RelativeLayout>
