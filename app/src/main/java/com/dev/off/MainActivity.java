@@ -22,7 +22,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import org.osmdroid.config.Configuration;
 import org.osmdroid.events.MapEventsReceiver;
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase;
 import org.osmdroid.util.GeoPoint;
+import org.osmdroid.util.MapTileIndex;
 import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.MapEventsOverlay;
 import org.osmdroid.views.overlay.Marker;
@@ -50,6 +52,7 @@ public class MainActivity extends AppCompatActivity {
 
         Context ctx = getApplicationContext();
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE));
+        Configuration.getInstance().setUserAgentValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
 
         setContentView(R.layout.activity_main);
 
@@ -64,9 +67,28 @@ public class MainActivity extends AppCompatActivity {
         Button btnShowFav = findViewById(R.id.btnShowFav);
 
         if (mMapView != null) {
+            // Google Maps Original Hybrid Tile Source (No API Key Required)
+            mMapView.setTileSource(new OnlineTileSourceBase(
+                    "Google-Hybrid",
+                    0, 20, 256, ".png",
+                    new String[]{
+                            "https://mt0.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+                            "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+                            "https://mt2.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+                            "https://mt3.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
+                    }) {
+                @Override
+                public String getTileURLString(long pMapTileIndex) {
+                    return getBaseUrl()
+                            .replace("{x}", MapTileIndex.getX(pMapTileIndex) + "")
+                            .replace("{y}", MapTileIndex.getY(pMapTileIndex) + "")
+                            .replace("{z}", MapTileIndex.getZoom(pMapTileIndex) + "");
+                }
+            });
+
             mMapView.setMultiTouchControls(true);
             selectedGeoPoint = new GeoPoint(28.6139, 77.2090); // Default Delhi
-            mMapView.getController().setZoom(15.0);
+            mMapView.getController().setZoom(16.0);
             mMapView.getController().setCenter(selectedGeoPoint);
             updateMarker(selectedGeoPoint, "Default Location");
 
@@ -94,7 +116,7 @@ public class MainActivity extends AppCompatActivity {
 
         btnStartMock.setOnClickListener(v -> {
             if (selectedGeoPoint == null) {
-                Toast.makeText(this, "Please select a point on the map first!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Please select a location on the map first!", Toast.LENGTH_SHORT).show();
                 return;
             }
             startMockService();
@@ -139,7 +161,7 @@ public class MainActivity extends AppCompatActivity {
                     runOnUiThread(() -> {
                         selectedGeoPoint = target;
                         mMapView.getController().setCenter(target);
-                        mMapView.getController().setZoom(16.0);
+                        mMapView.getController().setZoom(17.0);
                         updateMarker(target, query);
                         Toast.makeText(this, "Found: " + addr.getAddressLine(0), Toast.LENGTH_SHORT).show();
                     });
@@ -147,7 +169,7 @@ public class MainActivity extends AppCompatActivity {
                     runOnUiThread(() -> Toast.makeText(this, "Location not found!", Toast.LENGTH_SHORT).show());
                 }
             } catch (IOException e) {
-                runOnUiThread(() -> Toast.makeText(this, "Search failed: " + e.getLocalizedMessage(), Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, "Search error: " + e.getLocalizedMessage(), Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
@@ -216,7 +238,7 @@ public class MainActivity extends AppCompatActivity {
                 GeoPoint target = points.get(which);
                 selectedGeoPoint = target;
                 mMapView.getController().setCenter(target);
-                mMapView.getController().setZoom(16.0);
+                mMapView.getController().setZoom(17.0);
                 updateMarker(target, names.get(which));
                 Toast.makeText(this, "Loaded: " + names.get(which), Toast.LENGTH_SHORT).show();
             });
@@ -254,7 +276,6 @@ public class MainActivity extends AppCompatActivity {
     private void grantAppOps() {
         new Thread(() -> {
             try {
-                // Grant mock location appops and set secure mock location app setting
                 Shizuku.newProcess(new String[]{"sh", "-c", "appops set " + getPackageName() + " MOCK_LOCATION allow"}, null, null).waitFor();
                 Shizuku.newProcess(new String[]{"sh", "-c", "settings put secure mock_location_app " + getPackageName()}, null, null).waitFor();
             } catch (Exception ignored) {}
@@ -281,5 +302,16 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, requestList.toArray(new String[0]), 101);
         }
     }
-}
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (mMapView != null) mMapView.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (mMapView != null) mMapView.onPause();
+    }
+}
