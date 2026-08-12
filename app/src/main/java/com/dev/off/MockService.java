@@ -4,9 +4,14 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationManager;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.SystemClock;
 
 import androidx.core.app.NotificationCompat;
 
@@ -20,10 +25,13 @@ public class MockService extends Service {
     private boolean isRunning = false;
     private double currentLat = 0.0;
     private double currentLng = 0.0;
+    private LocationManager locationManager;
+    private final String[] PROVIDERS = {LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, "fused"};
 
     @Override
     public void onCreate() {
         super.onCreate();
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         createNotificationChannel();
     }
 
@@ -36,7 +44,7 @@ public class MockService extends Service {
 
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("DevOff GPS Active")
-                .setContentText(String.format(Locale.US, "Mocking via Shizuku: %.4f, %.4f", currentLat, currentLng))
+                .setContentText(String.format(Locale.US, "Mocking: %.4f, %.4f", currentLat, currentLng))
                 .setSmallIcon(R.drawable.ic_launcher)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setOngoing(true)
@@ -46,41 +54,77 @@ public class MockService extends Service {
 
         if (!isRunning) {
             isRunning = true;
-            startShizukuMockLoop();
+            initShizukuAndStart();
         }
 
         return START_STICKY;
     }
 
-    private void startShizukuMockLoop() {
+    private void initShizukuAndStart() {
         new Thread(() -> {
-            // 1. Shizuku Shell Commands se Test Provider init karein
-            execShizukuCmd("cmd location add-test-provider gps");
-            execShizukuCmd("cmd location set-test-provider-enabled gps true");
+            // 1. Shizuku se System Level par App ko Mock Location App set karein (Developer Option Skip)
+            runShellCmd("appops set " + getPackageName() + " MOCK_LOCATION allow");
+            runShellCmd("settings put secure mock_location_app " + getPackageName());
 
-            // 2. Continuous location inject loop
-            while (isRunning) {
-                if (Shizuku.pingBinder()) {
-                    String locCmd = String.format(Locale.US,
-                            "cmd location set-test-provider-location gps --location %f,%f",
-                            currentLat, currentLng);
-                    execShizukuCmd(locCmd);
-                }
-
-                try {
-                    Thread.sleep(1000); // Har 1 second mein location update hogi
-                } catch (InterruptedException e) {
-                    break;
-                }
+            // 2. Teeno Providers Add karein (GPS, Network, Fused)
+            for (String provider : PROVIDERS) {
+                runShellCmd("cmd location add-test-provider " + provider);
+                runShellCmd("cmd location set-test-provider-enabled " + provider + " true");
+                setupTestProviderApi(provider);
             }
+
+            // 3. Location Loop Start
+            startMockLoop();
         }).start();
     }
 
-    private void execShizukuCmd(String command) {
+    private void setupTestProviderApi(String provider) {
+        try {
+            locationManager.addTestProvider(
+                    provider,
+                    false, false, false, false, true, true, true,
+                    Criteria.POWER_LOW, Criteria.ACCURACY_FINE
+            );
+        } catch (Exception ignored) {}
+
+        try {
+            locationManager.setTestProviderEnabled(provider, true);
+        } catch (Exception ignored) {}
+    }
+
+    private void startMockLoop() {
+        while (isRunning) {
+            for (String provider : PROVIDERS) {
+                try {
+                    Location mockLoc = new Location(provider);
+                    mockLoc.setLatitude(currentLat);
+                    mockLoc.setLongitude(currentLng);
+                    mockLoc.setAltitude(5.0);
+                    mockLoc.setTime(System.currentTimeMillis());
+                    mockLoc.setAccuracy(1.0f);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                        mockLoc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+                    }
+
+                    locationManager.setTestProviderLocation(provider, mockLoc);
+                } catch (Exception e) {
+                    setupTestProviderApi(provider);
+                }
+            }
+
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                break;
+            }
+        }
+    }
+
+    private void runShellCmd(String cmd) {
         try {
             if (Shizuku.pingBinder()) {
-                Process process = Shizuku.newProcess(new String[]{"sh", "-c", command}, null, null);
-                process.waitFor();
+                Process p = Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null);
+                p.waitFor();
             }
         } catch (Exception ignored) {}
     }
@@ -102,7 +146,14 @@ public class MockService extends Service {
     @Override
     public void onDestroy() {
         isRunning = false;
-        new Thread(() -> execShizukuCmd("cmd location remove-test-provider gps")).start();
+        new Thread(() -> {
+            for (String provider : PROVIDERS) {
+                runShellCmd("cmd location remove-test-provider " + provider);
+                try {
+                    locationManager.removeTestProvider(provider);
+                } catch (Exception ignored) {}
+            }
+        }).start();
         super.onDestroy();
     }
 
