@@ -88,16 +88,10 @@ public class MainActivity extends AppCompatActivity {
             mMapView.getOverlays().add(new MapEventsOverlay(mapEventsReceiver));
         }
 
-        // Search Button Logic
         btnSearch.setOnClickListener(v -> searchAddress(etSearch.getText().toString()));
-
-        // Save Favourite Logic
         btnSaveFav.setOnClickListener(v -> saveCurrentLocationToFav());
-
-        // Show Favourite List Logic
         btnShowFav.setOnClickListener(v -> showFavouritesList());
 
-        // Start Mock Logic
         btnStartMock.setOnClickListener(v -> {
             if (selectedGeoPoint == null) {
                 Toast.makeText(this, "Please select a point on the map first!", Toast.LENGTH_SHORT).show();
@@ -106,7 +100,6 @@ public class MainActivity extends AppCompatActivity {
             startMockService();
         });
 
-        // Stop Mock Logic
         btnStopMock.setOnClickListener(v -> {
             Intent intent = new Intent(this, MockService.class);
             stopService(intent);
@@ -261,8 +254,9 @@ public class MainActivity extends AppCompatActivity {
     private void grantAppOps() {
         new Thread(() -> {
             try {
-                Process p = Shizuku.newProcess(new String[]{"sh", "-c", "appops set " + getPackageName() + " MOCK_LOCATION allow"}, null, null);
-                p.waitFor();
+                // Grant mock location appops and set secure mock location app setting
+                Shizuku.newProcess(new String[]{"sh", "-c", "appops set " + getPackageName() + " MOCK_LOCATION allow"}, null, null).waitFor();
+                Shizuku.newProcess(new String[]{"sh", "-c", "settings put secure mock_location_app " + getPackageName()}, null, null).waitFor();
             } catch (Exception ignored) {}
         }).start();
     }
@@ -288,3 +282,4 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 }
+
