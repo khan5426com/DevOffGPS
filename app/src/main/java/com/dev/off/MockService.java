@@ -6,6 +6,7 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Build;
@@ -15,8 +16,6 @@ import android.os.SystemClock;
 import androidx.core.app.NotificationCompat;
 
 import java.util.Locale;
-
-import rikka.shizuku.Shizuku;
 
 public class MockService extends Service {
 
@@ -52,56 +51,59 @@ public class MockService extends Service {
 
         if (!isRunning) {
             isRunning = true;
+            setupTestProvider();
             startMockLoop();
         }
 
         return START_STICKY;
     }
 
+    private void setupTestProvider() {
+        try {
+            locationManager.addTestProvider(
+                    LocationManager.GPS_PROVIDER,
+                    false,
+                    false,
+                    false,
+                    false,
+                    true,
+                    true,
+                    true,
+                    Criteria.POWER_LOW,
+                    Criteria.ACCURACY_FINE
+            );
+        } catch (Exception ignored) {}
+
+        try {
+            locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
+        } catch (Exception ignored) {}
+    }
+
     private void startMockLoop() {
         new Thread(() -> {
             while (isRunning) {
                 try {
-                    injectLocation(currentLat, currentLng);
-                    Thread.sleep(1000);
+                    Location mockLoc = new Location(LocationManager.GPS_PROVIDER);
+                    mockLoc.setLatitude(currentLat);
+                    mockLoc.setLongitude(currentLng);
+                    mockLoc.setAltitude(5.0);
+                    mockLoc.setTime(System.currentTimeMillis());
+                    mockLoc.setAccuracy(1.0f);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+                        mockLoc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+                    }
+
+                    locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, mockLoc);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    setupTestProvider(); // Re-add provider if dropped
+                }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    break;
                 }
             }
         }).start();
-    }
-
-    private void injectLocation(double lat, double lng) {
-        try {
-            // Method 1: Android System LocationManager
-            Location mockLoc = new Location(LocationManager.GPS_PROVIDER);
-            mockLoc.setLatitude(lat);
-            mockLoc.setLongitude(lng);
-            mockLoc.setAltitude(3.0);
-            mockLoc.setTime(System.currentTimeMillis());
-            mockLoc.setAccuracy(1.0f);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-                mockLoc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
-            }
-
-            try {
-                locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, mockLoc);
-            } catch (Exception e) {
-                try {
-                    locationManager.addTestProvider(LocationManager.GPS_PROVIDER,
-                            false, false, false, false, true, true, true, 1, 1);
-                    locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
-                    locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, mockLoc);
-                } catch (Exception ignored) {}
-            }
-
-            // Method 2: Shizuku CMD fallback execution
-            if (Shizuku.pingBinder()) {
-                String cmd = String.format(Locale.US, "cmd location set-test-provider-location gps --location %f,%f", lat, lng);
-                Process p = Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null);
-                p.waitFor();
-            }
-        } catch (Exception ignored) {}
     }
 
     private void createNotificationChannel() {
