@@ -1,16 +1,25 @@
 package com.dev.off;
 
 import android.Manifest;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.location.Address;
 import android.location.Geocoder;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
+import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
@@ -29,8 +38,14 @@ import org.osmdroid.views.MapView;
 import org.osmdroid.views.overlay.MapEventsOverlay;
 import org.osmdroid.views.overlay.Marker;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
@@ -43,13 +58,152 @@ public class MainActivity extends AppCompatActivity {
     private GeoPoint selectedGeoPoint;
     private Marker currentMarker;
     private SharedPreferences favPrefs;
+    private SharedPreferences authPrefs;
 
     private static final String PREF_FAV_KEY = "favourite_locations_json";
+    private static final String AUTH_PREF_NAME = "DevOff_Auth";
+    private static final String KEY_IS_LOGGED_IN = "is_logged_in";
+    private static final String RAW_JSON_URL = "https://raw.githubusercontent.com/khan5426com/mvvnl/refs/heads/main/mvvnl.json";
+
+    private String deviceId;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        authPrefs = getSharedPreferences(AUTH_PREF_NAME, MODE_PRIVATE);
+        deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
+
+        // Check if user is already logged in
+        if (!authPrefs.getBoolean(KEY_IS_LOGGED_IN, false)) {
+            showLoginDialog();
+            return;
+        }
+
+        initMainApp();
+    }
+
+    private void showLoginDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_login, null);
+        builder.setView(dialogView);
+        builder.setCancelable(false);
+
+        AlertDialog dialog = builder.create();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        }
+
+        TextView tvDeviceId = dialogView.findViewById(R.id.tvDeviceId);
+        EditText etUsername = dialogView.findViewById(R.id.etUsername);
+        EditText etPassword = dialogView.findViewById(R.id.etPassword);
+        CheckBox cbRemember = dialogView.findViewById(R.id.cbRemember);
+        Button btnCopyId = dialogView.findViewById(R.id.btnCopyId);
+        Button btnLogin = dialogView.findViewById(R.id.btnLogin);
+        ProgressBar loginProgress = dialogView.findViewById(R.id.loginProgress);
+
+        tvDeviceId.setText("Device ID: " + deviceId);
+
+        btnCopyId.setOnClickListener(v -> {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clip = ClipData.newPlainText("Device ID", deviceId);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(clip);
+                Toast.makeText(this, "Device ID copied to clipboard!", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        btnLogin.setOnClickListener(v -> {
+            String username = etUsername.getText().toString().trim();
+            String password = etPassword.getText().toString().trim();
+
+            if (username.isEmpty() || password.isEmpty()) {
+                Toast.makeText(this, "Enter both username and password", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            loginProgress.setVisibility(View.VISIBLE);
+            btnLogin.setEnabled(false);
+
+            verifyCredentialsFromGitHub(username, password, cbRemember.isChecked(), dialog, loginProgress, btnLogin);
+        });
+
+        dialog.show();
+    }
+
+    private void verifyCredentialsFromGitHub(String user, String pass, boolean remember, AlertDialog dialog, ProgressBar progress, Button btnLogin) {
+        new Thread(() -> {
+            boolean success = false;
+            String errorMessage = "Invalid Device ID, Username, or Password!";
+
+            try {
+                URL url = new URL(RAW_JSON_URL);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+
+                if (conn.getResponseCode() == 200) {
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    reader.close();
+
+                    JSONArray jsonArray = new JSONArray(sb.toString());
+                    for (int i = 0; i < jsonArray.length(); i++) {
+                        JSONObject item = jsonArray.getJSONObject(i);
+                        String gDeviceId = item.optString("device_id");
+                        String gUser = item.optString("username");
+                        String gPass = item.optString("password");
+                        String gExpiry = item.optString("expirydate");
+
+                        if (deviceId.equalsIgnoreCase(gDeviceId) && user.equals(gUser) && pass.equals(gPass)) {
+                            // Check Expiry Date
+                            SimpleDateFormat sdf = new SimpleDateFormat("dd-MM-yyyy", Locale.US);
+                            Date expiryDate = sdf.parse(gExpiry);
+                            Date currentDate = new Date();
+
+                            if (expiryDate != null && currentDate.after(expiryDate)) {
+                                errorMessage = "Your subscription expired on " + gExpiry;
+                                success = false;
+                            } else {
+                                success = true;
+                            }
+                            break;
+                        }
+                    }
+                } else {
+                    errorMessage = "Server connection failed! Code: " + conn.getResponseCode();
+                }
+            } catch (Exception e) {
+                errorMessage = "Network error: " + e.getLocalizedMessage();
+            }
+
+            final boolean isSuccess = success;
+            final String finalMsg = errorMessage;
+
+            runOnUiThread(() -> {
+                progress.setVisibility(View.GONE);
+                btnLogin.setEnabled(true);
+
+                if (isSuccess) {
+                    if (remember) {
+                        authPrefs.edit().putBoolean(KEY_IS_LOGGED_IN, true).apply();
+                    }
+                    Toast.makeText(MainActivity.this, "Login Successful!", Toast.LENGTH_SHORT).show();
+                    dialog.dismiss();
+                    initMainApp();
+                } else {
+                    Toast.makeText(MainActivity.this, finalMsg, Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
+    }
+
+    private void initMainApp() {
         Context ctx = getApplicationContext();
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE));
         Configuration.getInstance().setUserAgentValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
@@ -67,7 +221,6 @@ public class MainActivity extends AppCompatActivity {
         Button btnShowFav = findViewById(R.id.btnShowFav);
 
         if (mMapView != null) {
-            // Google Maps Original Hybrid Tile Source (No API Key Required)
             mMapView.setTileSource(new OnlineTileSourceBase(
                     "Google-Hybrid",
                     0, 20, 256, ".png",
@@ -87,7 +240,7 @@ public class MainActivity extends AppCompatActivity {
             });
 
             mMapView.setMultiTouchControls(true);
-            selectedGeoPoint = new GeoPoint(28.6139, 77.2090); // Default Delhi
+            selectedGeoPoint = new GeoPoint(28.6139, 77.2090);
             mMapView.getController().setZoom(16.0);
             mMapView.getController().setCenter(selectedGeoPoint);
             updateMarker(selectedGeoPoint, "Default Location");
