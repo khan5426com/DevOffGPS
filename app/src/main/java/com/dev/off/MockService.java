@@ -16,6 +16,7 @@ import android.os.SystemClock;
 import androidx.core.app.NotificationCompat;
 
 import java.util.Locale;
+import java.util.Random;
 
 import rikka.shizuku.Shizuku;
 
@@ -23,10 +24,14 @@ public class MockService extends Service {
 
     private static final String CHANNEL_ID = "DevOffGPS_Channel";
     private boolean isRunning = false;
-    private double currentLat = 0.0;
-    private double currentLng = 0.0;
+    private double baseLat = 0.0;
+    private double baseLng = 0.0;
+    private double activeLat = 0.0;
+    private double activeLng = 0.0;
+
     private LocationManager locationManager;
     private final String[] PROVIDERS = {LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, "fused"};
+    private final Random random = new Random();
 
     @Override
     public void onCreate() {
@@ -38,19 +43,13 @@ public class MockService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
-            currentLat = intent.getDoubleExtra("lat", 0.0);
-            currentLng = intent.getDoubleExtra("lng", 0.0);
+            baseLat = intent.getDoubleExtra("lat", 0.0);
+            baseLng = intent.getDoubleExtra("lng", 0.0);
+            activeLat = baseLat;
+            activeLng = baseLng;
         }
 
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("DevOff GPS Active")
-                .setContentText(String.format(Locale.US, "Mocking: %.4f, %.4f", currentLat, currentLng))
-                .setSmallIcon(R.drawable.ic_launcher)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setOngoing(true)
-                .build();
-
-        startForeground(1001, notification);
+        updateNotification();
 
         if (!isRunning) {
             isRunning = true;
@@ -60,20 +59,29 @@ public class MockService extends Service {
         return START_STICKY;
     }
 
+    private void updateNotification() {
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("DevOff GPS Active")
+                .setContentText(String.format(Locale.US, "Mocking: %.5f, %.5f (Acc: 102m)", activeLat, activeLng))
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setOngoing(true)
+                .build();
+
+        startForeground(1001, notification);
+    }
+
     private void initShizukuAndStart() {
         new Thread(() -> {
-            // 1. Shizuku se System Level par App ko Mock Location App set karein (Developer Option Skip)
             runShellCmd("appops set " + getPackageName() + " MOCK_LOCATION allow");
             runShellCmd("settings put secure mock_location_app " + getPackageName());
 
-            // 2. Teeno Providers Add karein (GPS, Network, Fused)
             for (String provider : PROVIDERS) {
                 runShellCmd("cmd location add-test-provider " + provider);
                 runShellCmd("cmd location set-test-provider-enabled " + provider + " true");
                 setupTestProviderApi(provider);
             }
 
-            // 3. Location Loop Start
             startMockLoop();
         }).start();
     }
@@ -93,15 +101,29 @@ public class MockService extends Service {
     }
 
     private void startMockLoop() {
+        long lastJitterTime = System.currentTimeMillis();
+
         while (isRunning) {
+            long currentTime = System.currentTimeMillis();
+
+            // Har 1 minute (60,000 ms) mein 2 se 50 meter ke radius mein random movement
+            if (currentTime - lastJitterTime >= 60000) {
+                applyRandomMovement();
+                lastJitterTime = currentTime;
+                updateNotification();
+            }
+
             for (String provider : PROVIDERS) {
                 try {
                     Location mockLoc = new Location(provider);
-                    mockLoc.setLatitude(currentLat);
-                    mockLoc.setLongitude(currentLng);
+                    mockLoc.setLatitude(activeLat);
+                    mockLoc.setLongitude(activeLng);
                     mockLoc.setAltitude(5.0);
                     mockLoc.setTime(System.currentTimeMillis());
-                    mockLoc.setAccuracy(1.0f);
+                    
+                    // Fixed Accuracy = 102
+                    mockLoc.setAccuracy(102.0f);
+
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
                         mockLoc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
                     }
@@ -118,6 +140,18 @@ public class MockService extends Service {
                 break;
             }
         }
+    }
+
+    // 2 meter se 50 meter radius jitter algorithm
+    private void applyRandomMovement() {
+        double radiusMeters = 2.0 + (48.0 * random.nextDouble()); // Random distance between 2m and 50m
+        double randomAngle = 2.0 * Math.PI * random.nextDouble();  // Random direction (0 to 360 degrees)
+
+        double deltaLat = (radiusMeters * Math.cos(randomAngle)) / 111111.0;
+        double deltaLng = (radiusMeters * Math.sin(randomAngle)) / (111111.0 * Math.cos(Math.toRadians(baseLat)));
+
+        activeLat = baseLat + deltaLat;
+        activeLng = baseLng + deltaLng;
     }
 
     private void runShellCmd(String cmd) {
