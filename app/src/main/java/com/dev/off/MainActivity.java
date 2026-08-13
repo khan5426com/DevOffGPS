@@ -9,6 +9,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.location.Address;
 import android.location.Geocoder;
 import android.os.Build;
@@ -18,6 +19,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -57,6 +59,11 @@ public class MainActivity extends AppCompatActivity {
     private Marker currentMarker;
     private SharedPreferences favPrefs;
     private SharedPreferences authPrefs;
+    private SharedPreferences locationPrefs;
+
+    private Button btnStartMock;
+    private Button btnDevOff;
+    private Button btnDevOn;
 
     private static final String PREF_FAV_KEY = "favourite_locations_json";
     private static final String AUTH_PREF_NAME = "DevOff_Auth";
@@ -65,6 +72,10 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_REMEMBER = "remember_checked";
     private static final String RAW_JSON_URL = "https://raw.githubusercontent.com/khan5426com/mvvnl/refs/heads/main/mvvnl.json";
 
+    private static final String LOC_PREF_NAME = "DevOff_LastLocation";
+    private static final String KEY_LAST_LAT = "last_lat";
+    private static final String KEY_LAST_LNG = "last_lng";
+
     private String deviceId;
 
     @Override
@@ -72,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         authPrefs = getSharedPreferences(AUTH_PREF_NAME, MODE_PRIVATE);
+        locationPrefs = getSharedPreferences(LOC_PREF_NAME, MODE_PRIVATE);
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
         showLoginDialog();
@@ -219,18 +231,32 @@ public class MainActivity extends AppCompatActivity {
 
         mMapView = findViewById(R.id.mapView);
         etSearch = findViewById(R.id.etSearch);
+        LinearLayout layoutSearch = findViewById(R.id.layoutSearch);
         Button btnSearch = findViewById(R.id.btnSearch);
-        Button btnStartMock = findViewById(R.id.btnStartMock);
+        btnStartMock = findViewById(R.id.btnStartMock);
         Button btnStopMock = findViewById(R.id.btnStopMock);
         Button btnSaveFav = findViewById(R.id.btnSaveFav);
         Button btnShowFav = findViewById(R.id.btnShowFav);
         
-        Button btnDevOff = findViewById(R.id.btnDevOff);
-        Button btnDevOn = findViewById(R.id.btnDevOn);
+        btnDevOff = findViewById(R.id.btnDevOff);
+        btnDevOn = findViewById(R.id.btnDevOn);
+        Button btnDevSettings = findViewById(R.id.btnDevSettings);
 
-        // GETO-style direct Push: 0 for Dev OFF, 1 for Dev ON
+        // Apply Dynamic Programmatic Gradients & Capsule Styles (No drawable XML needed)
+        applySearchCapsuleStyle(layoutSearch);
+        btnSaveFav.setBackground(createGradientDrawable("#36D1DC", "#5B86E5"));
+        btnShowFav.setBackground(createGradientDrawable("#36D1DC", "#5B86E5"));
+        btnDevSettings.setBackground(createGradientDrawable("#36D1DC", "#5B86E5"));
+        
+        btnStartMock.setBackground(createGradientDrawable("#A8E6CF", "#56AB2F")); // Light Green
+        btnStopMock.setBackground(createGradientDrawable("#e74c3c", "#c0392b"));  // Red
+        
+        btnDevOff.setBackground(createGradientDrawable("#2ecc71", "#27ae60"));    // Green
+        btnDevOn.setBackground(createGradientDrawable("#e74c3c", "#c0392b"));     // Red
+
         btnDevOff.setOnClickListener(v -> pushDevSetting(0));
         btnDevOn.setOnClickListener(v -> pushDevSetting(1));
+        btnDevSettings.setOnClickListener(v -> openDeveloperSettingsIfEnabled());
 
         if (mMapView != null) {
             mMapView.setTileSource(new OnlineTileSourceBase(
@@ -252,23 +278,26 @@ public class MainActivity extends AppCompatActivity {
             });
 
             mMapView.setMultiTouchControls(true);
-            selectedGeoPoint = new GeoPoint(28.6139, 77.2090);
+
+            // Restore Last Saved Selected Location (Defaults to Delhi on first run)
+            float savedLat = locationPrefs.getFloat(KEY_LAST_LAT, 28.6139f);
+            float savedLng = locationPrefs.getFloat(KEY_LAST_LNG, 77.2090f);
+            selectedGeoPoint = new GeoPoint(savedLat, savedLng);
+
             mMapView.getController().setZoom(16.0);
             mMapView.getController().setCenter(selectedGeoPoint);
-            updateMarker(selectedGeoPoint, "Default Location");
+            updateMarker(selectedGeoPoint, "Last Selected Location");
 
             MapEventsReceiver mapEventsReceiver = new MapEventsReceiver() {
                 @Override
                 public boolean singleTapConfirmedHelper(GeoPoint p) {
-                    selectedGeoPoint = p;
-                    updateMarker(p, "Selected Point");
+                    setSelectedLocation(p);
                     return true;
                 }
 
                 @Override
                 public boolean longPressHelper(GeoPoint p) {
-                    selectedGeoPoint = p;
-                    updateMarker(p, "Selected Point");
+                    setSelectedLocation(p);
                     return true;
                 }
             };
@@ -285,20 +314,63 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             startMockService();
+            // Start Mock clicked -> Dark Green Gradient
+            btnStartMock.setBackground(createGradientDrawable("#11998e", "#38ef7d"));
         });
 
         btnStopMock.setOnClickListener(v -> {
             Intent intent = new Intent(this, MockService.class);
             stopService(intent);
+            // Stop Mock clicked -> Reset to Light Green Gradient
+            btnStartMock.setBackground(createGradientDrawable("#A8E6CF", "#56AB2F"));
             Toast.makeText(this, "Mock Location Stopped", Toast.LENGTH_SHORT).show();
         });
 
         checkPermissions();
     }
 
+    // Helper Method: Programmatic Gradient Capsules
+    private GradientDrawable createGradientDrawable(String startColorHex, String endColorHex) {
+        GradientDrawable gd = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[] { Color.parseColor(startColorHex), Color.parseColor(endColorHex) }
+        );
+        gd.setCornerRadius(60f);
+        return gd;
+    }
+
+    // Helper Method: Pill Shaped Purple Search Bar
+    private void applySearchCapsuleStyle(View searchView) {
+        GradientDrawable gd = new GradientDrawable();
+        gd.setColor(Color.parseColor("#B2A4FF"));
+        gd.setCornerRadius(80f);
+        gd.setStroke(4, Color.parseColor("#8E7AB5"));
+        searchView.setBackground(gd);
+    }
+
+    private void setSelectedLocation(GeoPoint point) {
+        selectedGeoPoint = point;
+        updateMarker(point, "Selected Location");
+
+        // Save location persistently
+        locationPrefs.edit()
+                .putFloat(KEY_LAST_LAT, (float) point.getLatitude())
+                .putFloat(KEY_LAST_LNG, (float) point.getLongitude())
+                .apply();
+    }
+
+    private void openDeveloperSettingsIfEnabled() {
+        int devEnabled = Settings.Global.getInt(getContentResolver(), Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0);
+        if (devEnabled == 1) {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS);
+            startActivity(intent);
+        } else {
+            Toast.makeText(this, "Click on Dev ON button", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void pushDevSetting(int value) {
         try {
-            // Push development_settings_enabled key directly (GETO behavior)
             boolean isPushed = Settings.Global.putInt(
                     getContentResolver(),
                     Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
@@ -306,6 +378,11 @@ public class MainActivity extends AppCompatActivity {
             );
 
             if (isPushed) {
+                if (value == 0) {
+                    btnDevOff.setBackground(createGradientDrawable("#2ecc71", "#27ae60")); // Green
+                } else {
+                    btnDevOn.setBackground(createGradientDrawable("#e74c3c", "#c0392b"));  // Red
+                }
                 Toast.makeText(this, "development_settings_enabled -> (" + value + ") Pushed!", Toast.LENGTH_SHORT).show();
             } else {
                 Toast.makeText(this, "Push failed! Check ADB WRITE_SECURE_SETTINGS permission.", Toast.LENGTH_LONG).show();
@@ -342,10 +419,9 @@ public class MainActivity extends AppCompatActivity {
                     Address addr = addresses.get(0);
                     GeoPoint target = new GeoPoint(addr.getLatitude(), addr.getLongitude());
                     runOnUiThread(() -> {
-                        selectedGeoPoint = target;
+                        setSelectedLocation(target);
                         mMapView.getController().setCenter(target);
                         mMapView.getController().setZoom(17.0);
-                        updateMarker(target, query);
                         Toast.makeText(this, "Found: " + addr.getAddressLine(0), Toast.LENGTH_SHORT).show();
                     });
                 } else {
@@ -419,10 +495,9 @@ public class MainActivity extends AppCompatActivity {
             builder.setTitle("Favourite Locations");
             builder.setItems(items, (dialog, which) -> {
                 GeoPoint target = points.get(which);
-                selectedGeoPoint = target;
+                setSelectedLocation(target);
                 mMapView.getController().setCenter(target);
                 mMapView.getController().setZoom(17.0);
-                updateMarker(target, names.get(which));
                 Toast.makeText(this, "Loaded: " + names.get(which), Toast.LENGTH_SHORT).show();
             });
             builder.show();
@@ -476,4 +551,4 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
         if (mMapView != null) mMapView.onPause();
     }
-    }
+                    }
