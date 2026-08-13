@@ -210,6 +210,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
+    
         private void initMainApp() {
         Context ctx = getApplicationContext();
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE));
@@ -299,29 +300,50 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void toggleDeveloperSettings(int value) {
+        // Try System API first
         try {
             Settings.Global.putInt(getContentResolver(), Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, value);
             Toast.makeText(this, "Developer Options: " + (value == 1 ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
-        } catch (SecurityException e) {
-            try {
-                if (!Shizuku.pingBinder()) {
-                    Toast.makeText(this, "Shizuku Service is NOT running! Please start Shizuku app first.", Toast.LENGTH_LONG).show();
-                    return;
-                }
+            return;
+        } catch (SecurityException ignored) {}
 
+        // Run via Shizuku thread
+        new Thread(() -> {
+            boolean isRunning = false;
+            try {
+                isRunning = Shizuku.pingBinder();
+            } catch (Exception ignored) {}
+
+            if (!isRunning) {
+                runOnUiThread(() -> Toast.makeText(this, "Shizuku Service is NOT active! Open Shizuku app & start it.", Toast.LENGTH_LONG).show());
+                return;
+            }
+
+            try {
                 if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                    Shizuku.requestPermission(100);
-                    Toast.makeText(this, "Please allow Shizuku permission popup!", Toast.LENGTH_SHORT).show();
+                    runOnUiThread(() -> {
+                        Shizuku.requestPermission(100);
+                        Toast.makeText(this, "Please accept Shizuku permission prompt!", Toast.LENGTH_SHORT).show();
+                    });
                     return;
                 }
 
                 String cmd = "settings put global development_settings_enabled " + value;
-                Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null).waitFor();
-                Toast.makeText(this, "Dev Options: " + (value == 1 ? "ON" : "OFF") + " (via Shizuku)", Toast.LENGTH_SHORT).show();
-            } catch (Exception ex) {
-                Toast.makeText(this, "Failed to toggle Dev Options: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+                Process p = Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null);
+                int exitCode = p.waitFor();
+
+                runOnUiThread(() -> {
+                    if (exitCode == 0) {
+                        Toast.makeText(this, "Dev Options: " + (value == 1 ? "ON" : "OFF") + " (via Shizuku)", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, "Execution Failed! Error code: " + exitCode, Toast.LENGTH_SHORT).show();
+                    }
+                });
+
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "Error: " + e.getLocalizedMessage(), Toast.LENGTH_SHORT).show());
             }
-        }
+        }).start();
     }
 
     private void updateMarker(GeoPoint point, String title) {
@@ -506,5 +528,6 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
         if (mMapView != null) mMapView.onPause();
     }
-                               }
-            
+            }
+                
+    
