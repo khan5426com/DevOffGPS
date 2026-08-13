@@ -304,13 +304,20 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "Developer Options: " + (value == 1 ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
         } catch (SecurityException e) {
             try {
-                if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                    String cmd = "settings put global development_settings_enabled " + value;
-                    Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null).waitFor();
-                    Toast.makeText(this, "Dev Options: " + (value == 1 ? "ON" : "OFF") + " (via Shizuku)", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(this, "Permission Denied! Run ADB command or start Shizuku.", Toast.LENGTH_LONG).show();
+                if (!Shizuku.pingBinder()) {
+                    Toast.makeText(this, "Shizuku Service is NOT running! Please start Shizuku app first.", Toast.LENGTH_LONG).show();
+                    return;
                 }
+
+                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+                    Shizuku.requestPermission(100);
+                    Toast.makeText(this, "Please allow Shizuku permission popup!", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                String cmd = "settings put global development_settings_enabled " + value;
+                Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null).waitFor();
+                Toast.makeText(this, "Dev Options: " + (value == 1 ? "ON" : "OFF") + " (via Shizuku)", Toast.LENGTH_SHORT).show();
             } catch (Exception ex) {
                 Toast.makeText(this, "Failed to toggle Dev Options: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
             }
@@ -499,4 +506,5 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
         if (mMapView != null) mMapView.onPause();
     }
-                        }
+                               }
+            
