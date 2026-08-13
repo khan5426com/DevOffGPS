@@ -62,7 +62,9 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String PREF_FAV_KEY = "favourite_locations_json";
     private static final String AUTH_PREF_NAME = "DevOff_Auth";
-    private static final String KEY_IS_LOGGED_IN = "is_logged_in";
+    private static final String KEY_SAVED_USER = "saved_username";
+    private static final String KEY_SAVED_PASS = "saved_password";
+    private static final String KEY_REMEMBER = "remember_checked";
     private static final String RAW_JSON_URL = "https://raw.githubusercontent.com/khan5426com/mvvnl/refs/heads/main/mvvnl.json";
 
     private String deviceId;
@@ -74,13 +76,8 @@ public class MainActivity extends AppCompatActivity {
         authPrefs = getSharedPreferences(AUTH_PREF_NAME, MODE_PRIVATE);
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // Check if user is already logged in
-        if (!authPrefs.getBoolean(KEY_IS_LOGGED_IN, false)) {
-            showLoginDialog();
-            return;
-        }
-
-        initMainApp();
+        // App launch hote hi har baar login dialog open hoga
+        showLoginDialog();
     }
 
     private void showLoginDialog() {
@@ -103,6 +100,13 @@ public class MainActivity extends AppCompatActivity {
         ProgressBar loginProgress = dialogView.findViewById(R.id.loginProgress);
 
         tvDeviceId.setText("Device ID: " + deviceId);
+
+        boolean isRemembered = authPrefs.getBoolean(KEY_REMEMBER, false);
+        if (isRemembered) {
+            etUsername.setText(authPrefs.getString(KEY_SAVED_USER, ""));
+            etPassword.setText(authPrefs.getString(KEY_SAVED_PASS, ""));
+            cbRemember.setChecked(true);
+        }
 
         btnCopyId.setOnClickListener(v -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -161,7 +165,6 @@ public class MainActivity extends AppCompatActivity {
                         String gExpiry = item.optString("expirydate");
 
                         if (deviceId.equalsIgnoreCase(gDeviceId) && user.equals(gUser) && pass.equals(gPass)) {
-                            // Check Expiry Date
                             SimpleDateFormat sdf = new SimpleDateFormat("dd-MM-yyyy", Locale.US);
                             Date expiryDate = sdf.parse(gExpiry);
                             Date currentDate = new Date();
@@ -191,7 +194,13 @@ public class MainActivity extends AppCompatActivity {
 
                 if (isSuccess) {
                     if (remember) {
-                        authPrefs.edit().putBoolean(KEY_IS_LOGGED_IN, true).apply();
+                        authPrefs.edit()
+                                .putString(KEY_SAVED_USER, user)
+                                .putString(KEY_SAVED_PASS, pass)
+                                .putBoolean(KEY_REMEMBER, true)
+                                .apply();
+                    } else {
+                        authPrefs.edit().clear().apply();
                     }
                     Toast.makeText(MainActivity.this, "Login Successful!", Toast.LENGTH_SHORT).show();
                     dialog.dismiss();
@@ -219,6 +228,13 @@ public class MainActivity extends AppCompatActivity {
         Button btnStopMock = findViewById(R.id.btnStopMock);
         Button btnSaveFav = findViewById(R.id.btnSaveFav);
         Button btnShowFav = findViewById(R.id.btnShowFav);
+        
+        Button btnDevOff = findViewById(R.id.btnDevOff);
+        Button btnDevOn = findViewById(R.id.btnDevOn);
+
+        // Developer Options: OFF = 0, ON = 1
+        btnDevOff.setOnClickListener(v -> toggleDeveloperSettings(0));
+        btnDevOn.setOnClickListener(v -> toggleDeveloperSettings(1));
 
         if (mMapView != null) {
             mMapView.setTileSource(new OnlineTileSourceBase(
@@ -283,6 +299,30 @@ public class MainActivity extends AppCompatActivity {
 
         checkPermissions();
         setupShizukuPermission();
+    }
+
+    /**
+     * Toggles Global Settings -> development_settings_enabled 
+     */
+    private void toggleDeveloperSettings(int value) {
+        try {
+            // First attempt: Direct System API (requires adb shell pm grant ...)
+            Settings.Global.putInt(getContentResolver(), Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, value);
+            Toast.makeText(this, "Developer Options: " + (value == 1 ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
+        } catch (SecurityException e) {
+            // Second attempt: Fallback to Shizuku command execution
+            try {
+                if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                    String cmd = "settings put global development_settings_enabled " + value;
+                    Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null).waitFor();
+                    Toast.makeText(this, "Dev Options: " + (value == 1 ? "ON" : "OFF") + " (via Shizuku)", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(this, "Permission Denied! Run ADB command or start Shizuku.", Toast.LENGTH_LONG).show();
+                }
+            } catch (Exception ex) {
+                Toast.makeText(this, "Failed to toggle Dev Options: " + ex.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 
     private void updateMarker(GeoPoint point, String title) {
@@ -430,41 +470,4 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 Shizuku.newProcess(new String[]{"sh", "-c", "appops set " + getPackageName() + " MOCK_LOCATION allow"}, null, null).waitFor();
-                Shizuku.newProcess(new String[]{"sh", "-c", "settings put secure mock_location_app " + getPackageName()}, null, null).waitFor();
-            } catch (Exception ignored) {}
-        }).start();
-    }
-
-    private void checkPermissions() {
-        List<String> perms = new ArrayList<>();
-        perms.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        perms.add(Manifest.permission.ACCESS_COARSE_LOCATION);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            perms.add(Manifest.permission.POST_NOTIFICATIONS);
-        }
-
-        List<String> requestList = new ArrayList<>();
-        for (String p : perms) {
-            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
-                requestList.add(p);
-            }
-        }
-
-        if (!requestList.isEmpty()) {
-            ActivityCompat.requestPermissions(this, requestList.toArray(new String[0]), 101);
-        }
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (mMapView != null) mMapView.onResume();
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (mMapView != null) mMapView.onPause();
-    }
-}
+    
