@@ -76,7 +76,6 @@ public class MainActivity extends AppCompatActivity {
         authPrefs = getSharedPreferences(AUTH_PREF_NAME, MODE_PRIVATE);
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // App launch hote hi har baar login dialog open hoga
         showLoginDialog();
     }
 
@@ -211,8 +210,7 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
-
-    private void initMainApp() {
+        private void initMainApp() {
         Context ctx = getApplicationContext();
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE));
         Configuration.getInstance().setUserAgentValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
@@ -232,7 +230,6 @@ public class MainActivity extends AppCompatActivity {
         Button btnDevOff = findViewById(R.id.btnDevOff);
         Button btnDevOn = findViewById(R.id.btnDevOn);
 
-        // Developer Options: OFF = 0, ON = 1
         btnDevOff.setOnClickListener(v -> toggleDeveloperSettings(0));
         btnDevOn.setOnClickListener(v -> toggleDeveloperSettings(1));
 
@@ -301,16 +298,11 @@ public class MainActivity extends AppCompatActivity {
         setupShizukuPermission();
     }
 
-    /**
-     * Toggles Global Settings -> development_settings_enabled 
-     */
     private void toggleDeveloperSettings(int value) {
         try {
-            // First attempt: Direct System API (requires adb shell pm grant ...)
             Settings.Global.putInt(getContentResolver(), Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, value);
             Toast.makeText(this, "Developer Options: " + (value == 1 ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
         } catch (SecurityException e) {
-            // Second attempt: Fallback to Shizuku command execution
             try {
                 if (Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
                     String cmd = "settings put global development_settings_enabled " + value;
@@ -470,4 +462,41 @@ public class MainActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 Shizuku.newProcess(new String[]{"sh", "-c", "appops set " + getPackageName() + " MOCK_LOCATION allow"}, null, null).waitFor();
-    
+                Shizuku.newProcess(new String[]{"sh", "-c", "settings put secure mock_location_app " + getPackageName()}, null, null).waitFor();
+            } catch (Exception ignored) {}
+        }).start();
+    }
+
+    private void checkPermissions() {
+        List<String> perms = new ArrayList<>();
+        perms.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        perms.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+
+        List<String> requestList = new ArrayList<>();
+        for (String p : perms) {
+            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
+                requestList.add(p);
+            }
+        }
+
+        if (!requestList.isEmpty()) {
+            ActivityCompat.requestPermissions(this, requestList.toArray(new String[0]), 101);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (mMapView != null) mMapView.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (mMapView != null) mMapView.onPause();
+    }
+                        }
