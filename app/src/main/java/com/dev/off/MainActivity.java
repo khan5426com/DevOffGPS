@@ -49,8 +49,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-import rikka.shizuku.Shizuku;
-
 public class MainActivity extends AppCompatActivity {
 
     private MapView mMapView;
@@ -210,7 +208,6 @@ public class MainActivity extends AppCompatActivity {
             });
         }).start();
     }
-    
         private void initMainApp() {
         Context ctx = getApplicationContext();
         Configuration.getInstance().load(ctx, ctx.getSharedPreferences("osmdroid", Context.MODE_PRIVATE));
@@ -231,8 +228,9 @@ public class MainActivity extends AppCompatActivity {
         Button btnDevOff = findViewById(R.id.btnDevOff);
         Button btnDevOn = findViewById(R.id.btnDevOn);
 
-        btnDevOff.setOnClickListener(v -> toggleDeveloperSettings(0));
-        btnDevOn.setOnClickListener(v -> toggleDeveloperSettings(1));
+        // GETO-style direct Push: 0 for Dev OFF, 1 for Dev ON
+        btnDevOff.setOnClickListener(v -> pushDevSetting(0));
+        btnDevOn.setOnClickListener(v -> pushDevSetting(1));
 
         if (mMapView != null) {
             mMapView.setTileSource(new OnlineTileSourceBase(
@@ -296,54 +294,25 @@ public class MainActivity extends AppCompatActivity {
         });
 
         checkPermissions();
-        setupShizukuPermission();
     }
 
-    private void toggleDeveloperSettings(int value) {
-        // Try System API first
+    private void pushDevSetting(int value) {
         try {
-            Settings.Global.putInt(getContentResolver(), Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, value);
-            Toast.makeText(this, "Developer Options: " + (value == 1 ? "ON" : "OFF"), Toast.LENGTH_SHORT).show();
-            return;
-        } catch (SecurityException ignored) {}
+            // Push development_settings_enabled key directly (GETO behavior)
+            boolean isPushed = Settings.Global.putInt(
+                    getContentResolver(),
+                    Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
+                    value
+            );
 
-        // Run via Shizuku thread
-        new Thread(() -> {
-            boolean isRunning = false;
-            try {
-                isRunning = Shizuku.pingBinder();
-            } catch (Exception ignored) {}
-
-            if (!isRunning) {
-                runOnUiThread(() -> Toast.makeText(this, "Shizuku Service is NOT active! Open Shizuku app & start it.", Toast.LENGTH_LONG).show());
-                return;
+            if (isPushed) {
+                Toast.makeText(this, "development_settings_enabled -> (" + value + ") Pushed!", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Push failed! Check ADB WRITE_SECURE_SETTINGS permission.", Toast.LENGTH_LONG).show();
             }
-
-            try {
-                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                    runOnUiThread(() -> {
-                        Shizuku.requestPermission(100);
-                        Toast.makeText(this, "Please accept Shizuku permission prompt!", Toast.LENGTH_SHORT).show();
-                    });
-                    return;
-                }
-
-                String cmd = "settings put global development_settings_enabled " + value;
-                Process p = Shizuku.newProcess(new String[]{"sh", "-c", cmd}, null, null);
-                int exitCode = p.waitFor();
-
-                runOnUiThread(() -> {
-                    if (exitCode == 0) {
-                        Toast.makeText(this, "Dev Options: " + (value == 1 ? "ON" : "OFF") + " (via Shizuku)", Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(this, "Execution Failed! Error code: " + exitCode, Toast.LENGTH_SHORT).show();
-                    }
-                });
-
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "Error: " + e.getLocalizedMessage(), Toast.LENGTH_SHORT).show());
-            }
-        }).start();
+        } catch (SecurityException e) {
+            Toast.makeText(this, "Permission Denied! Run ADB Command:\nadb shell pm grant com.dev.off android.permission.WRITE_SECURE_SETTINGS", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void updateMarker(GeoPoint point, String title) {
@@ -475,27 +444,6 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, "Mock Location Started!", Toast.LENGTH_SHORT).show();
     }
 
-    private void setupShizukuPermission() {
-        try {
-            if (Shizuku.pingBinder()) {
-                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                    Shizuku.requestPermission(100);
-                } else {
-                    grantAppOps();
-                }
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private void grantAppOps() {
-        new Thread(() -> {
-            try {
-                Shizuku.newProcess(new String[]{"sh", "-c", "appops set " + getPackageName() + " MOCK_LOCATION allow"}, null, null).waitFor();
-                Shizuku.newProcess(new String[]{"sh", "-c", "settings put secure mock_location_app " + getPackageName()}, null, null).waitFor();
-            } catch (Exception ignored) {}
-        }).start();
-    }
-
     private void checkPermissions() {
         List<String> perms = new ArrayList<>();
         perms.add(Manifest.permission.ACCESS_FINE_LOCATION);
@@ -528,6 +476,4 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
         if (mMapView != null) mMapView.onPause();
     }
-            }
-                
-    
+    }
