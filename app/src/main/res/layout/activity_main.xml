@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="#F5F5F5">
 
     <!-- Top Search Bar -->
     <LinearLayout
@@ -19,36 +20,109 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:hint="Type city or address..."
-            android:imeOptions="actionSearch"
             android:inputType="text"
-            android:padding="10dp" />
+            android:maxLines="1"
+            android:padding="12dp"
+            android:background="@android:color/transparent"
+            android:textColor="#000000"
+            android:textColorHint="#808080"/>
 
         <Button
             android:id="@+id/btnSearch"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Search" />
+            android:text="SEARCH"
+            android:textStyle="bold"
+            android:backgroundTint="#E0E0E0"
+            android:textColor="#000000"/>
     </LinearLayout>
 
-    <!-- OSM Map -->
+    <!-- Map View -->
     <org.osmdroid.views.MapView
         android:id="@+id/mapView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/searchLayout"
-        android:layout_above="@+id/bottomControls" />
+        android:layout_above="@id/bottomControls" />
 
-    <!-- Bottom Action Buttons -->
+    <!-- Bottom Controls Area -->
     <LinearLayout
         android:id="@+id/bottomControls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
         android:orientation="vertical"
+        android:padding="12dp"
         android:background="#FFFFFF"
-        android:padding="8dp"
-        android:elevation="6dp">
+        android:elevation="10dp">
 
+        <!-- Dev Off & Dev On Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="12dp">
+
+            <Button
+                android:id="@+id/btnDevOff"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:text="Dev Off"
+                android:textSize="18sp"
+                android:textStyle="normal"
+                android:textColor="#000000"
+                android:backgroundTint="#FFFFFF"
+                android:layout_marginEnd="6dp"
+                style="@style/Widget.AppCompat.Button.Colored"/>
+
+            <Button
+                android:id="@+id/btnDevOn"
+                android:layout_width="0dp"
+                android:layout_height="60dp"
+                android:layout_weight="1"
+                android:text="Dev On"
+                android:textSize="18sp"
+                android:textStyle="normal"
+                android:textColor="#000000"
+                android:backgroundTint="#FFFFFF"
+                android:layout_marginStart="6dp"
+                style="@style/Widget.AppCompat.Button.Colored"/>
+        </LinearLayout>
+
+        <!-- Save Fav & Fav List Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:weightSum="2"
+            android:layout_marginBottom="12dp">
+
+            <Button
+                android:id="@+id/btnSaveFav"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="SAVE FAV"
+                android:textStyle="bold"
+                android:backgroundTint="#E0E0E0"
+                android:textColor="#000000"
+                android:layout_marginEnd="6dp"/>
+
+            <Button
+                android:id="@+id/btnShowFav"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="FAV LIST"
+                android:textStyle="bold"
+                android:backgroundTint="#E0E0E0"
+                android:textColor="#000000"
+                android:layout_marginStart="6dp"/>
+        </LinearLayout>
+
+        <!-- Start & Stop Mock Buttons -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -56,46 +130,26 @@
             android:weightSum="2">
 
             <Button
-                android:id="@+id/btnSaveFav"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginEnd="4dp"
-                android:text="Save Fav" />
-
-            <Button
-                android:id="@+id/btnShowFav"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="4dp"
-                android:text="Fav List" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:weightSum="2"
-            android:layout_marginTop="4dp">
-
-            <Button
                 android:id="@+id/btnStartMock"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginEnd="4dp"
+                android:text="START MOCK"
+                android:textStyle="bold"
                 android:backgroundTint="#4CAF50"
-                android:text="Start Mock" />
+                android:textColor="#FFFFFF"
+                android:layout_marginEnd="6dp"/>
 
             <Button
                 android:id="@+id/btnStopMock"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="4dp"
+                android:text="STOP MOCK"
+                android:textStyle="bold"
                 android:backgroundTint="#F44336"
-                android:text="Stop Mock" />
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="6dp"/>
         </LinearLayout>
     </LinearLayout>
 </RelativeLayout>
